@@ -1,0 +1,17 @@
+# 3dClustSim -mask /group/sub-group_task-rest_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz -acf 0.507321 4.11745 10.683 -prefix clustsim_out
+# 2-sided thresholding
+# Grid: 97x115x97 2.00x2.00x2.00 mm^3 (243049 voxels in mask)
+#
+# CLUSTER SIZE THRESHOLD(pthr,alpha) in Voxels
+# -NN 1  | alpha = Prob(Cluster >= given size)
+#  pthr  | .10000 .05000 .02000 .01000
+# ------ | ------ ------ ------ ------
+ 0.050000  1188.0 1419.0 1736.0 1985.0
+ 0.020000   450.1  543.0  677.5  782.0
+ 0.010000   251.6  308.2  381.0  444.7
+ 0.005000   156.1  189.0  234.7  278.5
+ 0.002000    88.0  107.0  134.7  161.2
+ 0.001000    59.8   73.5   92.9  109.0
+ 0.000500    41.8   51.7   65.4   77.5
+ 0.000200    26.1   32.7   42.5   51.2
+ 0.000100    18.3   23.7   31.3   38.1
