@@ -12,13 +12,31 @@ We performed a seed-based resting state functional connectiivty analysis in the 
 #### Must use:
 
 python 3.8, 3.9, 3.10, and 3.11
-scipy 1.8.0
 nilearn 0.10.2
+netneurotools 0.2.4
 
 (I personally use Python 3.9.6)
 
 #### To install the necessary packages: 
 
-pip install numpy pandas matplotlib neuromaps matplotlib nibabel nilearn==0.10.2 surfplot scipy==1.8.0
+Install in this order:
 
-pip install git+https://github.com/JulioAPeraza/gradec.git
+1. First install gradec:
+   ```
+   pip install git+https://github.com/JulioAPeraza/gradec.git
+   ```
+
+2. Then install seaborn:
+   ```
+   pip install seaborn
+   ```
+
+3. Install remaining packages:
+   ```
+   pip install numpy pandas matplotlib neuromaps nibabel nilearn==0.10.2 surfplot scipy
+   ```
+
+4. **Important**: Ensure netneurotools is version 0.2.4:
+   ```
+   pip install netneurotools==0.2.4
+   ```
