@@ -1,17 +1,17 @@
-# 3dClustSim -mask /group/sub-group_task-rest_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz -acf 0.507321 4.11745 10.683 -prefix clustsim_out
+# 3dClustSim -mask /home/data/nbc/Laird_ABIDE/dset/derivatives/rsfc-habenula-subject-rois/group/sub-group_task-rest_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz -acf 0.528742 4.09708 10.7808 -prefix clustsim_out
 # 2-sided thresholding
-# Grid: 97x115x97 2.00x2.00x2.00 mm^3 (243049 voxels in mask)
+# Grid: 97x115x97 2.00x2.00x2.00 mm^3 (243186 voxels in mask)
 #
 # CLUSTER SIZE THRESHOLD(pthr,alpha) in Voxels
 # -NN 1  | alpha = Prob(Cluster >= given size)
 #  pthr  | .10000 .05000 .02000 .01000
 # ------ | ------ ------ ------ ------
- 0.050000  1188.0 1419.0 1736.0 1985.0
- 0.020000   450.1  543.0  677.5  782.0
- 0.010000   251.6  308.2  381.0  444.7
- 0.005000   156.1  189.0  234.7  278.5
- 0.002000    88.0  107.0  134.7  161.2
- 0.001000    59.8   73.5   92.9  109.0
- 0.000500    41.8   51.7   65.4   77.5
- 0.000200    26.1   32.7   42.5   51.2
- 0.000100    18.3   23.7   31.3   38.1
+ 0.050000  1160.0 1384.0 1709.5 1926.0
+ 0.020000   437.6  529.0  658.0  761.0
+ 0.010000   246.5  298.9  375.7  435.0
+ 0.005000   153.0  184.2  228.0  272.0
+ 0.002000    86.7  105.6  133.3  156.0
+ 0.001000    58.8   72.1   90.8  106.3
+ 0.000500    41.1   50.7   64.9   76.1
+ 0.000200    26.0   32.6   42.3   49.8
+ 0.000100    18.2   23.6   31.2   37.1
