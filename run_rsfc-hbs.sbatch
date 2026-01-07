@@ -40,14 +40,12 @@ CLEAN_DIR="${DERIVS_DIR}/denoising-${afni_ver}"
 # Max # CPUs = 360, lets take 300 -> 38 participants
 # sbatch --array=1 run_rsfc-hbs.sbatch, "to check that everything is fine"
 # sbatch --array=2-1000%38 run_rsfc-hbs.sbatch
-# THISJOBVALUE=${SLURM_ARRAY_TASK_ID}
+THISJOBVALUE=${SLURM_ARRAY_TASK_ID}
 
 # Use for array > 1000 elements uncomment the following two lines and comment the previous line
 # sbatch --array=1-1000%38 run_rsfc-hbs.sbatch
-VALUES=({1000..2000})
-# sbatch --array=1-194%38 run_rsfc-hbs.sbatch
-# VALUES=({2000..2194})
-THISJOBVALUE=${VALUES[${SLURM_ARRAY_TASK_ID}]}
+#VALUES=({1000..2000})
+#THISJOBVALUE=${VALUES[${SLURM_ARRAY_TASK_ID}]}
 
 # Determine subject ID from the habenula-rois TSV (preferred) or fall back to participants.tsv.
 # We try to read the line numbered ${THISJOBVALUE} from the habenula-rois file. If that line
@@ -57,15 +55,16 @@ ROIS_SUBJECTS_TSV=${ROI_DIR}/habenula-rois_subjects.tsv
 if [[ -f "${ROIS_SUBJECTS_TSV}" ]]; then
     # Try to extract the subject from a headered TSV: use the 'subject'
     # column if present, otherwise fall back to the first column.
+    # Skip header row (NR==1) by reading data starting at NR==2
     subject=$( awk -F '\t' -v row="${THISJOBVALUE}" '
-        NR==1{ for(i=1;i<=NF;i++) h[i]=tolower($i) }
-        NR==row{
+        NR==1{ for(i=1;i<=NF;i++) h[i]=tolower($i); next }
+        NR-1==row{
             for(i=1;i<=NF;i++) if(h[i]=="subject"){ print $i; exit }
             print $1
         }' "${ROIS_SUBJECTS_TSV}" )
 
     # Extract ROI filename from the same row if present (any column with .nii)
-    roi_file=$( awk -F '\t' -v row="${THISJOBVALUE}" 'NR==row{ for(i=1;i<=NF;i++) if($i ~ /\.nii/){ print $i; exit } }' "${ROIS_SUBJECTS_TSV}" )
+    roi_file=$( awk -F '\t' -v row="${THISJOBVALUE}" 'NR==1{next} NR-1==row{ for(i=1;i<=NF;i++) if($i ~ /\.nii/){ print $i; exit } }' "${ROIS_SUBJECTS_TSV}" )
 
     if [[ -z "${subject}" ]]; then
         echo "No subject found for job index ${THISJOBVALUE} in ${ROIS_SUBJECTS_TSV}. Exiting."

@@ -165,6 +165,11 @@ def main(mriqc_dir, clean_dir, rsfc_dir, subject, sessions, space, desc_list, ro
             clean_subj_dir = op.join(clean_dir, subject, "func")
             rsfc_subj_dir = op.join(rsfc_dir, subject, "func")
 
+        # Skip if subject folder already exists and is not empty
+        if op.exists(rsfc_subj_dir) and len(os.listdir(rsfc_subj_dir)) > 0:
+            print(f"\tSkipping {subject} - output directory already exists and is not empty: {rsfc_subj_dir}", flush=True)
+            continue
+
         # Collect important files
         clean_subj_files = sorted(
             glob(
