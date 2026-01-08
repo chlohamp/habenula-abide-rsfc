@@ -127,7 +127,7 @@ def write_table(table_fn_file):
         "site",
         "age",
         "gender",
-        "medication",
+        #"medication",
         "InputFile",
     ]
     with open(table_fn_file, "w") as fo:
@@ -136,19 +136,22 @@ def write_table(table_fn_file):
 
 def append2table(subject, subjAve_roi_briks_file, idx, participants_df, table_fn_file):
     sub_df = participants_df[participants_df["participant_id"] == subject]
+    
+    if sub_df.empty:
+        print(f"Warning: No participant data found for {subject}", flush=True)
+        return
 
-    sub_df = sub_df.fillna("")
     group = sub_df["DX_GROUP"].values[0]
     site = sub_df["SITE_ID"].values[0]
     age = sub_df["AGE_AT_SCAN"].values[0]
     gender = sub_df["SEX"].values[0]
-    medication = sub_df["CURRENT_MED_STATUS"].values[0]
+    #medication = sub_df["CURRENT_MED_STATUS"].values[0]
     InputFile = "{brik}[{idx}]".format(brik=subjAve_roi_briks_file, idx=idx)
 
     group = int(float(group))
     group = "asd" if group == 1 else "td" if group == 2 else group
 
-    medication = int(float(medication))
+    #medication = int(float(medication))
 
     cov_variables = [
         subject,
@@ -156,7 +159,7 @@ def append2table(subject, subjAve_roi_briks_file, idx, participants_df, table_fn
         site,
         age,
         gender,
-        medication,
+        #medication,
         InputFile,
     ]
 
@@ -166,8 +169,8 @@ def append2table(subject, subjAve_roi_briks_file, idx, participants_df, table_fn
 
 
 def run_lmer(bucket_fn, mask_fn, table_file, n_jobs):
-    #model = "'group+age+gender+(1|site)'"
-    model = "'group+age+gender+medication+(1|site)'"
+    model = "'group+age+gender+(1|site)'"
+    #model = "'group+age+gender+medication+(1|site)'"
 
     asd_mean = "asd_mean 'group : 1*asd'"
     td_mean = "td_mean 'group : 1*td'"
@@ -234,12 +237,13 @@ def main(
     space = "MNI152NLin2009cAsym"
     n_jobs = int(n_jobs)
 
-    participants_df = pd.read_csv(op.join(dset, "participants.tsv"), sep="\t")
+    # Read participants with low_memory=False to avoid mixed-type dtype warnings
+    participants_df = pd.read_csv(op.join(dset, "participants.tsv"), sep="\t", low_memory=False)
     #participants_df = participants_df[(participants_df["AGE_AT_SCAN"] >= 5) & (participants_df["AGE_AT_SCAN"] <= 21)]
 
     # Define directories
     rsfc_subjs_dir = op.join(rsfc_dir, "**", "func")
-    rsfc_group_dir = op.join(rsfc_dir, "group-medication_rerun")
+    rsfc_group_dir = op.join(rsfc_dir, "group-rerun")
     os.makedirs(rsfc_group_dir, exist_ok=True)
 
     # Collect important files
@@ -275,7 +279,7 @@ def main(
                 "SITE_ID",
                 "AGE_AT_SCAN",
                 "SEX",
-                "CURRENT_MED_STATUS",
+                #"CURRENT_MED_STATUS",
             ]
         ],
         clean_briks_files,
@@ -332,16 +336,40 @@ def main(
     os.makedirs(roi_dir, exist_ok=True)
 
     # Conform table_fn
-    write_new_table = False
     table_fn = op.join(roi_dir, f"sub-group_task-rest_desc-1S2StTest{roi}_table.txt")
-    if not op.exists(table_fn):
-        write_table(table_fn)
-        write_new_table = True
+    # Always regenerate table to ensure correct structure without medication
+    if op.exists(table_fn):
+        os.remove(table_fn)
+    write_table(table_fn)
+    write_new_table = True
 
     # Calculate subject and ROI level average connectivity
     subjects = [op.basename(x).split("_")[0] for x in clean_briks_files]
     subjects = list(set(subjects))
     print(f"Group analysis sample size: {len(subjects)}")
+
+    # Print diagnostic summary (always): counts per DX group and age statistics
+    included_subjects = subjects
+    subs_df = participants_df[participants_df["participant_id"].isin(included_subjects)].copy()
+    if subs_df.empty:
+        print("Warning: no participant metadata found for the included subjects", flush=True)
+    else:
+        subs_df["DX_GROUP_NUM"] = pd.to_numeric(subs_df["DX_GROUP"], errors="coerce")
+        subs_df["AGE_NUM"] = pd.to_numeric(subs_df["AGE_AT_SCAN"], errors="coerce")
+
+        asd_count = int((subs_df["DX_GROUP_NUM"] == 1).sum())
+        td_count = int((subs_df["DX_GROUP_NUM"] == 2).sum())
+        total_included = len(included_subjects)
+
+        age_mean = subs_df["AGE_NUM"].mean()
+        age_std = subs_df["AGE_NUM"].std()
+
+        print(f"Included subjects (total): {total_included}", flush=True)
+        print(f"DX group counts: ASD={asd_count}, TD={td_count}", flush=True)
+        if pd.isna(age_mean):
+            print("Age: no valid age values available", flush=True)
+        else:
+            print(f"Age: mean={age_mean:.2f}, std={age_std:.2f}", flush=True)
 
     for subject in subjects:
         subj_briks_files = [x for x in clean_briks_files if subject in x]
