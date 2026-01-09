@@ -142,13 +142,13 @@ def append2table(subject, subjAve_roi_briks_file, idx, participants_df, table_fn
     site = sub_df["SITE_ID"].values[0]
     age = sub_df["AGE_AT_SCAN"].values[0]
     gender = sub_df["SEX"].values[0]
-    medication = sub_df["CURRENT_MED_STATUS"].values[0]
+    #medication = sub_df["CURRENT_MED_STATUS"].values[0]
     InputFile = "{brik}[{idx}]".format(brik=subjAve_roi_briks_file, idx=idx)
 
     group = int(float(group))
     group = "asd" if group == 1 else "td" if group == 2 else group
 
-    medication = int(float(medication))
+    #medication = int(float(medication))
 
     cov_variables = [
         subject,
@@ -172,7 +172,7 @@ def run_lmer(bucket_fn, mask_fn, table_file, n_jobs):
     asd_mean = "asd_mean 'group : 1*asd'"
     td_mean = "td_mean 'group : 1*td'"
     group_mean = "group_mean 'group : 0.5*asd +0.5*td'"
-    group_diff = "td-asd 'group : 1*asd -1*td'"
+    group_diff = "asd-td 'group : 1*asd -1*td'"
     cmd = f"3dLMEr -prefix {bucket_fn} \
         -mask {mask_fn} \
         -model {model} \
@@ -312,7 +312,7 @@ def main(
                 "SITE_ID",
                 "AGE_AT_SCAN",
                 "SEX",
-                "CURRENT_MED_STATUS",
+                #"CURRENT_MED_STATUS",
             ]
         ],
         clean_briks_files,
@@ -502,16 +502,12 @@ def main(
             else:
                 print(f"Age: mean={age_mean:.2f}, std={age_std:.2f}", flush=True)
 
-        # run_lmer(
-        #     op.basename(onetwottest_briks_fn),
-        #     group_mask_fn,
-        #     table_fn,
-        #     n_jobs,
-        # )
-
-                # Temporary dry-run: do not execute 3dLMEr. Print summary and exit.
-        print("Dry-run mode: skipping 3dLMEr execution (temporary)", flush=True)
-        return
+        run_lmer(
+            op.basename(onetwottest_briks_fn),
+            group_mask_fn,
+            table_fn,
+            n_jobs,
+        )
 
     '''onetwottest_briks_map = op.join(
         roi_dir, f"sub-group_task-rest_desc-1S2StTest{roi}"
