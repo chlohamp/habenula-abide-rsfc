@@ -157,24 +157,25 @@ def main(
                 print(f"Skipping subject {subject}: Path does not exist.", flush=True)
                 continue
 
-            # Try both naming conventions for BRIK files
-            subject_brik = op.join(
-                subject_path,
-                f"{subject}_task-rest_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK",
-            )
-            subject_brik_run = op.join(
-                subject_path,
-                f"{subject}_task-rest_run-1_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK",
-            )
+            # Try multiple naming conventions for BRIK files (no run, run-1, run-2, run-3)
+            brik_patterns = [
+                (f"{subject}_task-rest_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK", "task-rest"),
+                (f"{subject}_task-rest_run-1_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK", "task-rest_run-1"),
+                (f"{subject}_task-rest_run-2_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK", "task-rest_run-2"),
+                (f"{subject}_task-rest_run-3_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK", "task-rest_run-3"),
+            ]
             
-            # Determine which BRIK file exists
-            if op.exists(subject_brik):
-                brik_to_use = f"{subject_brik}[1]"
-                nii_suffix = "task-rest"
-            elif op.exists(subject_brik_run):
-                brik_to_use = f"{subject_brik_run}[1]"
-                nii_suffix = "task-rest_run-1"
-            else:
+            # Find which BRIK file exists
+            brik_to_use = None
+            nii_suffix = None
+            for brik_name, suffix in brik_patterns:
+                brik_path = op.join(subject_path, brik_name)
+                if op.exists(brik_path):
+                    brik_to_use = f"{brik_path}[1]"
+                    nii_suffix = suffix
+                    break
+            
+            if brik_to_use is None:
                 print(f"Skipping subject {subject}: BRIK file not found.", flush=True)
                 continue
             
@@ -183,25 +184,38 @@ def main(
                 f"{subject}_{nii_suffix}_space-MNI152NLin2009cAsym_res-2_desc-norm_zmap.nii.gz",
             )
 
+            # Check if NIfTI exists and is valid, otherwise create it
+            needs_conversion = False
             if not os.path.exists(subject_nii):
+                needs_conversion = True
+            else:
+                # Check if existing file is corrupted
+                try:
+                    test_img = nib.load(subject_nii)
+                    _ = test_img.get_fdata()  # Try to load data to check for corruption
+                except Exception as e:
+                    print(f"\t\t\tNIfTI file is corrupted for {subject}, will recreate", flush=True)
+                    os.remove(subject_nii)
+                    needs_conversion = True
+            
+            if needs_conversion:
                 print(f"\t\t\tConverting BRIK to NIfTI for {subject}", flush=True)
                 afni2nifti(brik_to_use, subject_nii)
-
-            # Verify the NIfTI file was created successfully
-            if not os.path.exists(subject_nii):
-                print(f"Skipping subject {subject}: Failed to create NIfTI file.", flush=True)
-                continue
-
-            # Verify the NIfTI file is not corrupted
-            try:
-                test_img = nib.load(subject_nii)
-                _ = test_img.get_fdata()  # Try to load data to check for corruption
-            except Exception as e:
-                print(f"Skipping subject {subject}: NIfTI file is corrupted ({str(e)})", flush=True)
-                # Remove corrupted file so it can be recreated next time
-                if os.path.exists(subject_nii):
-                    os.remove(subject_nii)
-                continue
+                
+                # Verify the NIfTI file was created successfully and is valid
+                if not os.path.exists(subject_nii):
+                    print(f"Skipping subject {subject}: Failed to create NIfTI file.", flush=True)
+                    continue
+                
+                # Check if the newly created file is valid
+                try:
+                    test_img = nib.load(subject_nii)
+                    _ = test_img.get_fdata()
+                except Exception as e:
+                    print(f"Skipping subject {subject}: Newly created NIfTI is invalid ({str(e)})", flush=True)
+                    if os.path.exists(subject_nii):
+                        os.remove(subject_nii)
+                    continue
 
             print(f"\t\t\tProcessing cluster {cluster_id} ROI for {subject}", flush=True)
             
