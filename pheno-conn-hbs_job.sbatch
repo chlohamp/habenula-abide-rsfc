@@ -18,8 +18,12 @@ set -e
 pwd; hostname; date
 
 # IB_16C_96G, IB_40C_512G, IB_44C_512G
-# modified from Julio's ABCD rsfc workflow 
-# sbatch --array=0-3 pheno-conn_job.sbatch. Use array=0-3: process 4 clusters in parallel
+
+
+# to run, first must do:
+# sbatch --array=0 pheno-conn-hbs_job.sbatch
+# once complete, run:
+# sbatch --array=1-3 pheno-conn-hbs_job.sbatch
 
 #==============Shell script==============#
 #Load the software needed
@@ -55,7 +59,7 @@ CLUSTER_ID=$((SLURM_ARRAY_TASK_ID + 1))
 
 
 # Phenotype-connectivity cluster ROI directory
-PHENO_DIR="${GROUP_DIR}/${seed_region}/pheno"
+PHENO_DIR="${GROUP_DIR}/pheno"
 
 # Bind directories to singularity image
 SHELL_CMD="singularity exec --cleanenv \

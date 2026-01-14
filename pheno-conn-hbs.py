@@ -114,7 +114,7 @@ def main(
     print(f"Processing cluster {cluster_id} ROI: {roi_file}", flush=True)
 
     group_path = os.path.join(group_dir, roi)
-    phenotypic_df = pd.read_csv(op.join(dset, "participants.tsv"), sep="\t")
+    phenotypic_df = pd.read_csv(op.join(dset, "participants.tsv"), sep="\t", low_memory=False)
     #phenotypes = ["ADOS_GOTHAM_SOCAFFECT", "ADOS_GOTHAM_RRB", "SRS_MOTIVATION", "VINELAND_DAILYLVNG_STANDARD", "VINELAND_COPING_V_SCALED", ]
     #phenotypes = ["ADI_RRB_TOTAL_C", "ADI_R_RRB_TOTAL_C", "ADI_R_SOCIAL_TOTAL_A", "ADI_R_VERBAL_TOTAL_BV", "ADOS_GOTHAM_SOCAFFECT", "ADOS_2_SOCAFFECT", "ADOS_GOTHAM_RRB", "ADOS_2_RRB", "SRS_MOTIVATION", "SRS_MOTIVATION_RAW", "VINELAND_DAILYLIVING_STANDARD", "VINELAND_DAILYLVNG_STANDARD", "VINELAND_COPING_V_SCALED"]
     phenotypes = ["SRS_MOTIVATION", "SRS_MOTIVATION_RAW", "SRS_COMMUNICATION", "SRS_COMMUNICATION_RAW", "VINELAND_DAILYLIVING_STANDARD", "VINELAND_DAILYLVNG_STANDARD", "BRIEF_GEC_T"]
@@ -154,44 +154,78 @@ def main(
 
             # Check if the subject path exists
             if not os.path.exists(subject_path):
-                print(f"Skipping subject {subject}: Path does not exist.")
+                print(f"Skipping subject {subject}: Path does not exist.", flush=True)
                 continue
 
+            # Try both naming conventions for BRIK files
             subject_brik = op.join(
                 subject_path,
-                f"{subject}_task-rest_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK[1]",
+                f"{subject}_task-rest_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK",
             )
-            subject_task_brik = op.join(
+            subject_brik_run = op.join(
                 subject_path,
-                f"{subject}_task-rest_run-1_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK[1]",
+                f"{subject}_task-rest_run-1_space-MNI152NLin2009cAsym_res-2_desc-norm_bucketREML+tlrc.BRIK",
             )
+            
+            # Determine which BRIK file exists
+            if op.exists(subject_brik):
+                brik_to_use = f"{subject_brik}[1]"
+                nii_suffix = "task-rest"
+            elif op.exists(subject_brik_run):
+                brik_to_use = f"{subject_brik_run}[1]"
+                nii_suffix = "task-rest_run-1"
+            else:
+                print(f"Skipping subject {subject}: BRIK file not found.", flush=True)
+                continue
+            
             subject_nii = os.path.join(
                 subject_path,
-                f"{subject}_task-rest_space-MNI152NLin2009cAsym_res-2_desc-norm_zmap.nii.gz",
+                f"{subject}_{nii_suffix}_space-MNI152NLin2009cAsym_res-2_desc-norm_zmap.nii.gz",
             )
 
-            if not os.path.exists(subject_nii): #this part of the code is a little finicky, have to change it
-                afni2nifti(subject_brik, subject_nii)
+            if not os.path.exists(subject_nii):
+                print(f"\t\t\tConverting BRIK to NIfTI for {subject}", flush=True)
+                afni2nifti(brik_to_use, subject_nii)
+
+            # Verify the NIfTI file was created successfully
+            if not os.path.exists(subject_nii):
+                print(f"Skipping subject {subject}: Failed to create NIfTI file.", flush=True)
+                continue
+
+            # Verify the NIfTI file is not corrupted
+            try:
+                test_img = nib.load(subject_nii)
+                _ = test_img.get_fdata()  # Try to load data to check for corruption
+            except Exception as e:
+                print(f"Skipping subject {subject}: NIfTI file is corrupted ({str(e)})", flush=True)
+                # Remove corrupted file so it can be recreated next time
+                if os.path.exists(subject_nii):
+                    os.remove(subject_nii)
+                continue
 
             print(f"\t\t\tProcessing cluster {cluster_id} ROI for {subject}", flush=True)
             
-            # Load cluster ROI mask
-            cluster_mask = nib.load(roi_file)
-            
-            # Create masker with cluster ROI
-            masker = NiftiMasker(mask_img=cluster_mask)
-            zscores = masker.fit_transform(subject_nii)
+            try:
+                # Load cluster ROI mask
+                cluster_mask = nib.load(roi_file)
+                
+                # Create masker with cluster ROI
+                masker = NiftiMasker(mask_img=cluster_mask)
+                zscores = masker.fit_transform(subject_nii)
 
-            # Average across all voxels in the cluster ROI
-            zscore = np.mean(zscores)
-            print(f"\t\t\tCluster {cluster_id} mean z-score: {zscore:.4f}", flush=True)
+                # Average across all voxels in the cluster ROI
+                zscore = np.mean(zscores)
+                print(f"\t\t\tCluster {cluster_id} mean z-score: {zscore:.4f}", flush=True)
 
-            age = participants_df.loc[participants_df['Subj'] == subject, 'age'].values[0]
-            group = participants_df.loc[participants_df['Subj'] == subject, 'group'].values[0]
+                age = participants_df.loc[participants_df['Subj'] == subject, 'age'].values[0]
+                group = participants_df.loc[participants_df['Subj'] == subject, 'group'].values[0]
 
-            results.append(
-                {"Subject": subject, "Group": group, "Age": age, "Cluster": cluster_id, "Correlation": zscore}
-            )
+                results.append(
+                    {"Subject": subject, "Group": group, "Age": age, "Cluster": cluster_id, "Correlation": zscore}
+                )
+            except Exception as e:
+                print(f"Error processing subject {subject}: {str(e)}", flush=True)
+                continue
                     
     corr_df = pd.DataFrame(results)
 
