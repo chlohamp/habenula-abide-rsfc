@@ -73,6 +73,29 @@ ordered_columns <- c("Subject", "Cluster", "Group", "Age", "Sex", "Site", "RSFC"
                      "Phen1", "Phen2", "Phen3", "Phen4")
 pheno_data <- merged_data %>% select(any_of(ordered_columns))
 
+# Print sample sizes for each phenotype
+message("\n=== Phenotype Sample Sizes ===")
+for (phen_var in c("Phen1", "Phen2", "Phen3", "Phen4")) {
+  if (phen_var %in% colnames(pheno_data)) {
+    n_total <- sum(!is.na(pheno_data[[phen_var]]))
+    
+    # Count by group
+    n_by_group <- pheno_data %>%
+      filter(!is.na(!!sym(phen_var))) %>%
+      group_by(Group) %>%
+      summarise(n = n(), .groups = 'drop')
+    
+    message(sprintf("%s: %d total (ASD: %d, TD: %d)", 
+                    phen_var, 
+                    n_total,
+                    ifelse("asd" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "asd"], 0),
+                    ifelse("td" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "td"], 0)))
+  } else {
+    message(sprintf("%s: Not found in data", phen_var))
+  }
+}
+message("==============================\n")
+
 # Save cluster-specific CSV files for statistical analysis
 for (cluster in clusters) {
   cluster_df <- pheno_data %>% 

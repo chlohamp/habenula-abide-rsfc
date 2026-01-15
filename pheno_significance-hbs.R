@@ -73,6 +73,34 @@ ordered_columns <- c("Subject", "Cluster", "Group", "Age", "Sex", "Site", "RSFC"
                      "Phen1", "Phen2", "Phen3", "Phen4")
 pheno_data <- merged_data %>% select(any_of(ordered_columns))
 
+# Print sample sizes for each phenotype
+message("\n=== Phenotype Sample Sizes (Unique Subjects) ===")
+for (phen_var in c("Phen1", "Phen2", "Phen3", "Phen4")) {
+  if (phen_var %in% colnames(pheno_data)) {
+    # Count unique subjects with non-NA phenotype values
+    n_total <- pheno_data %>%
+      filter(!is.na(!!sym(phen_var))) %>%
+      distinct(Subject) %>%
+      nrow()
+    
+    # Count by group
+    n_by_group <- pheno_data %>%
+      filter(!is.na(!!sym(phen_var))) %>%
+      distinct(Subject, Group) %>%
+      group_by(Group) %>%
+      summarise(n = n(), .groups = 'drop')
+    
+    message(sprintf("%s: %d subjects (ASD: %d, TD: %d)", 
+                    phen_var, 
+                    n_total,
+                    ifelse("asd" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "asd"], 0),
+                    ifelse("td" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "td"], 0)))
+  } else {
+    message(sprintf("%s: Not found in data", phen_var))
+  }
+}
+message("==============================================\n")
+
 # Save cluster-specific CSV files for statistical analysis
 for (cluster in clusters) {
   cluster_df <- pheno_data %>% 
@@ -155,6 +183,11 @@ for (cluster in clusters) {
         Group = sub_data[[group_var]]
       )
       
+      # Count subjects by group
+      n_asd <- sum(plot_data$Group == "asd")
+      n_td <- sum(plot_data$Group == "td")
+      n_total <- nrow(plot_data)
+      
       # Create scatter plot with regression lines by group
       p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC, color = Group, fill = Group)) +
         geom_point(alpha = 0.6, size = 2) +
@@ -163,17 +196,115 @@ for (cluster in clusters) {
         scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
         labs(
           title = paste("Cluster", cluster, "-", phen_var),
+          subtitle = sprintf("N = %d (ASD: %d, TD: %d)", n_total, n_asd, n_td),
           x = phen_var,
           y = "Habenula Connectivity"
         ) +
         theme_minimal() +
-        theme(plot.title = element_text(hjust = 0.5))
+        theme(
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+        )
       
       ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
       message(paste("Saved plot:", plot_file))
       
     }, error = function(e) {
       message(paste("Error in cluster", cluster, phen_var, ":", e$message))
+    })
+  }
+}
+
+# ============================================================================
+# ASD-only analysis: Test phenotype effects within ASD group
+# ============================================================================
+message("\n=== Running ASD-only analysis ===\n")
+
+for (cluster in clusters) {
+  data_path <- paste0(output_dir, "cluster-", cluster, "_data.csv")
+  data <- read_csv(data_path, show_col_types = FALSE)
+  
+  # Filter for ASD group only
+  asd_data <- data %>% filter(Group == "asd")
+  
+  for (phen_var in phen_vars) {
+    # Skip if phenotype column doesn't exist or is all NA
+    if (!(phen_var %in% colnames(asd_data)) || all(is.na(asd_data[[phen_var]]))) {
+      message(paste("Skipping", phen_var, "in cluster", cluster, "- no data"))
+      next
+    }
+    
+    all_columns <- c(roi, categorical_vars, numerical_vars, phen_var, "Site")
+    sub_data <- asd_data[, all_columns]
+    sub_data <- na.omit(sub_data)
+    
+    # Skip if insufficient data
+    if (nrow(sub_data) < 10) {
+      message(paste("Skipping", phen_var, "in cluster", cluster, "- insufficient data"))
+      next
+    }
+    
+    # Convert categorical variables to factors
+    for (var in categorical_vars) {
+      sub_data[[var]] <- factor(sub_data[[var]])
+    }
+    
+    # Ensure numeric columns are numeric
+    sub_data[[roi]] <- as.numeric(sub_data[[roi]])
+    for (var in numerical_vars) {
+      sub_data[[var]] <- as.numeric(sub_data[[var]])
+    }
+    sub_data[[phen_var]] <- as.numeric(sub_data[[phen_var]])
+    
+    # Build equation without Group (ASD only)
+    fixed_effects <- paste(c(numerical_vars, phen_var), collapse = " + ")
+    equation_lm <- paste(roi, "~", fixed_effects, "+ Site")
+    
+    message(paste("Cluster", cluster, "-", phen_var, "(ASD only):", equation_lm))
+    
+    # Run model
+    tryCatch({
+      model <- lm(as.formula(equation_lm), data = sub_data)
+      
+      print(summary(model))
+      
+      # Write results
+      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_table.csv")
+      model_table <- as.data.frame(coef(summary(model)))
+      write.csv(model_table, file = out_file, row.names = TRUE)
+      message(paste("Saved:", out_file))
+      
+      # Create plot
+      plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_plot.png")
+      
+      plot_data <- data.frame(
+        RSFC = sub_data[[roi]],
+        Phenotype = sub_data[[phen_var]]
+      )
+      
+      n_asd <- nrow(plot_data)
+      
+      # Create scatter plot with regression line
+      p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC)) +
+        geom_point(alpha = 0.6, size = 2, color = "#E74C3C") +
+        geom_smooth(method = "lm", se = TRUE, color = "#E74C3C", fill = "#E74C3C") +
+        labs(
+          title = paste("Cluster", cluster, "-", phen_var, "(ASD only)"),
+          subtitle = sprintf("N = %d", n_asd),
+          x = phen_var,
+          y = "Habenula Connectivity"
+        ) +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+        )
+      
+      ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
+      message(paste("Saved plot:", plot_file))
+      
+    }, error = function(e) {
+      message(paste("Error in cluster", cluster, phen_var, "(ASD only):", e$message))
     })
   }
 }
