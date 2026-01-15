@@ -1,25 +1,25 @@
 #!/bin/bash
-#SBATCH --job-name=pheno-conn
+#SBATCH --job-name=agersfc
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem-per-cpu=4gb
+#SBATCH --cpus-per-task=40
+#SBATCH --mem-per-cpu=2gb
 #SBATCH --account=iacc_nbc
 #SBATCH --qos=pq_nbc
-#SBATCH --partition=IB_16C_96G
+#SBATCH --partition=IB_44C_512G
 # Outputs ----------------------------------
-#SBATCH --output=/home/data/nbc/Laird_ABIDE/code/log/rsfc-pheno/%x_%A-%a.out
-#SBATCH --error=/home/data/nbc/Laird_ABIDE/code/log/rsfc-pheno/%x_%A-%a.err
+#SBATCH --output=/home/data/nbc/Laird_ABIDE/code/log/rsfc-age/%x_%A-%a.out
+#SBATCH --error=/home/data/nbc/Laird_ABIDE/code/log/rsfc-age/%x_%A-%a.err
 # ------------------------------------------
 
-set -e
-
 pwd; hostname; date
+set -e
 
 # IB_16C_96G, IB_40C_512G, IB_44C_512G
 # modified from Julio's ABCD rsfc workflow 
-# sbatch --array=0-3 pheno-conn-hbs_job.sbatch. Use array=0-3: process 4 clusters in parallel
+# sbatch --array=0 rsfc-age_job.sbatch
+# Use array=0: only one region for habenula
 
 #==============Shell script==============#
 #Load the software needed
@@ -42,44 +42,31 @@ TEMPLATE_DIR="/home/data/cis/templateflow/tpl-MNI152NLin2009cAsym"
 template="tpl-MNI152NLin2009cAsym_res-02_desc-brain_T1w.nii.gz"
 template_mask="tpl-MNI152NLin2009cAsym_res-02_desc-brain_mask.nii.gz"
 
-
+# Run group analysis
 seed_region="habenula"
-RSFC_DIR="${DERIVS_DIR}/rsfc-${seed_region}-subject-rois"
-GROUP_DIR="${RSFC_DIR}/group" 
-
 ROIs=("habenula")
-ROI=${ROIs[0]}
-
-# Calculate cluster ID (array 0-3 maps to clusters 1-4)
-CLUSTER_ID=$((SLURM_ARRAY_TASK_ID + 1))
-
-
-# Phenotype-connectivity cluster ROI directory
-PHENO_DIR="${GROUP_DIR}/pheno"
+RSFC_DIR="${DERIVS_DIR}/rsfc-${seed_region}-subject-rois"
+ROI=${ROIs[${SLURM_ARRAY_TASK_ID}]}
 
 # Bind directories to singularity image
 SHELL_CMD="singularity exec --cleanenv \
     -B ${BIDS_DIR}:/data \
     -B ${CODE_DIR}:/code \
-    -B ${GROUP_DIR}:/group \
+    -B ${MRIQC_DIR}:/mriqc \
     -B ${TEMPLATE_DIR}:/template_dir \
     -B ${RSFC_DIR}:/rsfc \
-    -B ${PHENO_DIR}:/pheno \
     ${IMG_DIR}/afni-${afni_ver}.sif"
 
 # Pass inputs
-analysis="${SHELL_CMD} python /code/pheno-conn-hbs.py \
-    --dset /data \
-    --group_dir /group \
+analysis="${SHELL_CMD} python /code/rsfc-age.py \
+    --dset /data
+    --mriqc_dir /mriqc \
     --rsfc_dir /rsfc \
     --template /template_dir/${template} \
     --template_mask /template_dir/${template_mask} \
     --roi_lst ${ROIs[@]} \
     --roi ${ROI} \
-    --pheno_dir /pheno \
-    --cluster_id ${CLUSTER_ID} \
     --n_jobs ${SLURM_CPUS_PER_TASK}"
-
 
 # Setup done, run the command
 echo
@@ -91,5 +78,4 @@ echo Finished tasks with exit code $exitcode
 date
 
 exit $exitcode
-
 

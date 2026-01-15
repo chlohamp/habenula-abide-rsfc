@@ -220,16 +220,32 @@ def main(
             print(f"\t\t\tProcessing cluster {cluster_id} ROI for {subject}", flush=True)
             
             try:
-                # Load cluster ROI mask
-                cluster_mask = nib.load(roi_file)
+                # Load cluster ROI mask and subject connectivity map
+                cluster_mask_img = nib.load(roi_file)
+                cluster_mask_data = cluster_mask_img.get_fdata()
                 
-                # Create masker with cluster ROI
-                masker = NiftiMasker(mask_img=cluster_mask)
-                zscores = masker.fit_transform(subject_nii)
-
-                # Average across all voxels in the cluster ROI
-                zscore = np.mean(zscores)
-                print(f"\t\t\tCluster {cluster_id} mean z-score: {zscore:.4f}", flush=True)
+                subject_img = nib.load(subject_nii)
+                subject_data = subject_img.get_fdata()
+                
+                # Diagnostic: Check original mask values
+                unique_vals = np.unique(cluster_mask_data[cluster_mask_data > 0])
+                print(f"\t\t\tOriginal mask unique values: {unique_vals}", flush=True)
+                print(f"\t\t\tOriginal mask voxel count (>0): {np.sum(cluster_mask_data > 0)}", flush=True)
+                
+                # Threshold to only include voxels > 0.6
+                threshold = 0.6
+                thresholded_mask = cluster_mask_data > threshold
+                n_voxels = np.sum(thresholded_mask)
+                print(f"\t\t\tThresholded voxel count (>{threshold}): {n_voxels}", flush=True)
+                
+                if n_voxels == 0:
+                    print(f"\t\t\tWARNING: No voxels above threshold {threshold}!", flush=True)
+                    continue
+                
+                # Extract values from subject data where mask > threshold
+                masked_values = subject_data[thresholded_mask]
+                zscore = np.mean(masked_values)
+                print(f"\t\t\tCluster {cluster_id} mean z-score (>{threshold}): {zscore:.4f}", flush=True)
 
                 age = participants_df.loc[participants_df['Subj'] == subject, 'age'].values[0]
                 group = participants_df.loc[participants_df['Subj'] == subject, 'group'].values[0]

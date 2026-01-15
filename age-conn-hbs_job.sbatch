@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pheno-conn
+#SBATCH --job-name=age-conn
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -9,8 +9,8 @@
 #SBATCH --qos=pq_nbc
 #SBATCH --partition=IB_16C_96G
 # Outputs ----------------------------------
-#SBATCH --output=/home/data/nbc/Laird_ABIDE/code/log/rsfc-pheno/%x_%A-%a.out
-#SBATCH --error=/home/data/nbc/Laird_ABIDE/code/log/rsfc-pheno/%x_%A-%a.err
+#SBATCH --output=/home/data/nbc/Laird_ABIDE/code/log/rsfc-age/%x_%A-%a.out
+#SBATCH --error=/home/data/nbc/Laird_ABIDE/code/log/rsfc-age/%x_%A-%a.err
 # ------------------------------------------
 
 set -e
@@ -18,8 +18,9 @@ set -e
 pwd; hostname; date
 
 # IB_16C_96G, IB_40C_512G, IB_44C_512G
-# modified from Julio's ABCD rsfc workflow 
-# sbatch --array=0-3 pheno-conn-hbs_job.sbatch. Use array=0-3: process 4 clusters in parallel
+# Extract age and habenula connectivity for each binary ROI from age-effects analysis
+# sbatch --array=0-N age-conn-hbs_job.sbatch (where N = number of clusters - 1)
+# sbatch --array=0 age-conn-hbs_job.sbatch (where N = number of clusters - 1)
 
 #==============Shell script==============#
 #Load the software needed
@@ -50,12 +51,12 @@ GROUP_DIR="${RSFC_DIR}/group"
 ROIs=("habenula")
 ROI=${ROIs[0]}
 
-# Calculate cluster ID (array 0-3 maps to clusters 1-4)
+# Calculate cluster ID (array task ID + 1)
 CLUSTER_ID=$((SLURM_ARRAY_TASK_ID + 1))
 
 
-# Phenotype-connectivity cluster ROI directory
-PHENO_DIR="${GROUP_DIR}/pheno"
+# Age-effects cluster ROI directory
+AGE_DIR="${RSFC_DIR}/age-effect5-21"
 
 # Bind directories to singularity image
 SHELL_CMD="singularity exec --cleanenv \
@@ -64,11 +65,11 @@ SHELL_CMD="singularity exec --cleanenv \
     -B ${GROUP_DIR}:/group \
     -B ${TEMPLATE_DIR}:/template_dir \
     -B ${RSFC_DIR}:/rsfc \
-    -B ${PHENO_DIR}:/pheno \
+    -B ${AGE_DIR}:/age \
     ${IMG_DIR}/afni-${afni_ver}.sif"
 
 # Pass inputs
-analysis="${SHELL_CMD} python /code/pheno-conn-hbs.py \
+analysis="${SHELL_CMD} python /code/age-conn-hbs.py \
     --dset /data \
     --group_dir /group \
     --rsfc_dir /rsfc \
@@ -76,7 +77,7 @@ analysis="${SHELL_CMD} python /code/pheno-conn-hbs.py \
     --template_mask /template_dir/${template_mask} \
     --roi_lst ${ROIs[@]} \
     --roi ${ROI} \
-    --pheno_dir /pheno \
+    --age_dir /age \
     --cluster_id ${CLUSTER_ID} \
     --n_jobs ${SLURM_CPUS_PER_TASK}"
 
@@ -91,5 +92,3 @@ echo Finished tasks with exit code $exitcode
 date
 
 exit $exitcode
-
-
