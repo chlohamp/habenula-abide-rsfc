@@ -117,8 +117,8 @@ for (cluster in clusters) {
       sub_data[[var]] <- factor(sub_data[[var]])
     }
     
-    # Relevel Group to make td the reference
-    sub_data[[group_var]] <- relevel(factor(sub_data[[group_var]]), ref = "td")
+    # Relevel Group to make asd the reference
+    sub_data[[group_var]] <- relevel(factor(sub_data[[group_var]]), ref = "asd")
     
     # Ensure numeric columns are numeric (no scaling)
     sub_data[[roi]] <- as.numeric(sub_data[[roi]])
