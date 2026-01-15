@@ -73,8 +73,10 @@ ordered_columns <- c("Subject", "Cluster", "Group", "Age", "Sex", "Site", "RSFC"
                      "Phen1", "Phen2", "Phen3", "Phen4")
 pheno_data <- merged_data %>% select(any_of(ordered_columns))
 
-# Print sample sizes for each phenotype
+# Calculate and save sample sizes for each phenotype
 message("\n=== Phenotype Sample Sizes (Unique Subjects) ===")
+sample_sizes <- data.frame()
+
 for (phen_var in c("Phen1", "Phen2", "Phen3", "Phen4")) {
   if (phen_var %in% colnames(pheno_data)) {
     # Count unique subjects with non-NA phenotype values
@@ -90,15 +92,31 @@ for (phen_var in c("Phen1", "Phen2", "Phen3", "Phen4")) {
       group_by(Group) %>%
       summarise(n = n(), .groups = 'drop')
     
+    n_asd <- ifelse("asd" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "asd"], 0)
+    n_td <- ifelse("td" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "td"], 0)
+    
     message(sprintf("%s: %d subjects (ASD: %d, TD: %d)", 
                     phen_var, 
                     n_total,
-                    ifelse("asd" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "asd"], 0),
-                    ifelse("td" %in% n_by_group$Group, n_by_group$n[n_by_group$Group == "td"], 0)))
+                    n_asd,
+                    n_td))
+    
+    # Add to sample sizes dataframe
+    sample_sizes <- rbind(sample_sizes, data.frame(
+      Phenotype = phen_var,
+      Total_N = n_total,
+      ASD_N = n_asd,
+      TD_N = n_td
+    ))
   } else {
     message(sprintf("%s: Not found in data", phen_var))
   }
 }
+
+# Save sample sizes to CSV
+sample_sizes_file <- paste0(output_dir, "sample_sizes.csv")
+write_csv(sample_sizes, sample_sizes_file)
+message(paste("\nSaved sample sizes to:", sample_sizes_file))
 message("==============================================\n")
 
 # Save cluster-specific CSV files for statistical analysis
@@ -156,14 +174,15 @@ for (cluster in clusters) {
     sub_data[[phen_var]] <- as.numeric(sub_data[[phen_var]])
     
     # Build equation with Group*Phenotype interaction
+    # Match original 3dLMEr model structure: use Site as random effect
     fixed_effects <- paste(c(numerical_vars), collapse = " + ")
-    equation_lm <- paste(roi, "~", fixed_effects, "+", group_var, "*", phen_var, "+ Site")
+    equation_lmer <- paste(roi, "~", fixed_effects, "+", group_var, "*", phen_var, "+ (1|Site)")
     
-    message(paste("Cluster", cluster, "-", phen_var, ":", equation_lm))
+    message(paste("Cluster", cluster, "-", phen_var, ":", equation_lmer))
     
-    # Run model with lm (Site as fixed effect to avoid lmer issues)
+    # Run model with lmer (Site as random effect)
     tryCatch({
-      model <- lm(as.formula(equation_lm), data = sub_data)
+      model <- lmer(as.formula(equation_lmer), data = sub_data)
       
       print(summary(model))
       
@@ -258,13 +277,13 @@ for (cluster in clusters) {
     
     # Build equation without Group (ASD only)
     fixed_effects <- paste(c(numerical_vars, phen_var), collapse = " + ")
-    equation_lm <- paste(roi, "~", fixed_effects, "+ Site")
+    equation_lmer <- paste(roi, "~", fixed_effects, "+ (1|Site)")
     
-    message(paste("Cluster", cluster, "-", phen_var, "(ASD only):", equation_lm))
+    message(paste("Cluster", cluster, "-", phen_var, "(ASD only):", equation_lmer))
     
     # Run model
     tryCatch({
-      model <- lm(as.formula(equation_lm), data = sub_data)
+      model <- lmer(as.formula(equation_lmer), data = sub_data)
       
       print(summary(model))
       
