@@ -182,14 +182,19 @@ def run_agelmer(bucket_fn, mask_fn, center, table_file, n_jobs):
     data_table = pd.read_csv(table_file, sep='\t')
     model = "'group*age+gender+(1|site)'"
 
-    asd_mean = "asd_mean 'group : 1*asd age :'"
-    td_mean = "td_mean 'group : 1*td age :'"
-    group = "group 'group : 1*asd &1*td age :'"
-    group_mean = "group_mean 'group : 0.5*asd +0.5*td age :'"
-    group_diff = "asd-td  'group : 1*asd -1*td age :'"
-    group_by_age_interaction = "group_by_age 'group : 1*asd -1*td age : 1'"
-
+    # Mean connectivity at average age (intercepts)
+    asd_mean = "asd_mean 'group : 1*asd age :'"                      # brik 0-1 (coef, t-stat)
+    td_mean = "td_mean 'group : 1*td age :'"                         # brik 2-3
+    group = "group 'group : 1*asd &1*td age :'"                      # brik 4-5
+    group_mean = "group_mean 'group : 0.5*asd +0.5*td age :'"        # brik 6-7
+    group_diff = "asd-td  'group : 1*asd -1*td age :'"               # brik 8-9
     
+    # Age interaction (difference in slopes between groups)
+    group_by_age_interaction = "group_by_age 'group : 1*asd -1*td age : 1'"  # brik 10-11
+    
+    # Simple slopes (age effect within each group)
+    age_effect_asd = "age_asd 'group : 1*asd age : 1'"               # brik 12-13
+    age_effect_td = "age_td 'group : 1*td age : 1'"                  # brik 14-15
 
     cmd = f"3dLMEr -prefix {bucket_fn} \
         -mask {mask_fn} \
@@ -202,6 +207,8 @@ def run_agelmer(bucket_fn, mask_fn, center, table_file, n_jobs):
         -gltCode {group_mean} \
         -gltCode {group_diff} \
         -gltCode {group_by_age_interaction} \
+        -gltCode {age_effect_asd} \
+        -gltCode {age_effect_td} \
         -resid {bucket_fn}_res \
         -dbgArgs \
         -jobs {n_jobs} \

@@ -80,6 +80,9 @@ group_var <- "Group"
 categorical_vars <- c("Sex")
 numerical_vars <- c("Age")
 
+# Store p-values for multiple comparison correction
+all_pvalues <- list()
+
 for (cluster in clusters) {
   data_path <- paste0(output_dir, "cluster-", cluster, "_age_data.csv")
   
@@ -117,29 +120,80 @@ for (cluster in clusters) {
     sub_data[[var]] <- as.numeric(sub_data[[var]])
   }
   
-  # Build equation with Group*Age interaction
-  # Match original 3dLMEr model: group*age+gender+(1|site)
-  equation_lmer <- paste(roi, "~ Age * Group + Sex + (1|Site)")
-  
-  message(paste("Cluster", cluster, "model:", equation_lmer))
-  message(paste("Sample size:", nrow(sub_data)))
-  
-  # Run model with lmer (Site as random effect)
+  # Extract age slopes for each group separately
   tryCatch({
-    model <- lmer(as.formula(equation_lmer), data = sub_data)
+    # Split data by group
+    asd_data <- sub_data %>% filter(Group == "asd")
+    td_data <- sub_data %>% filter(Group == "td")
     
-    print(summary(model))
+    # Fit simple linear models for each group (Age predicting Connectivity)
+    asd_model <- lm(as.formula(paste(roi, "~ Age")), data = asd_data)
+    td_model <- lm(as.formula(paste(roi, "~ Age")), data = td_data)
     
-    # Write results
-    out_file <- paste0(output_dir, "cluster-", cluster, "_age_interaction_table.csv")
-    model_table <- as.data.frame(coef(summary(model)))
-    write.csv(model_table, file = out_file, row.names = TRUE)
+    # Extract slope coefficients
+    asd_slope <- coef(summary(asd_model))["Age", "Estimate"]
+    asd_se <- coef(summary(asd_model))["Age", "Std. Error"]
+    asd_pval <- coef(summary(asd_model))["Age", "Pr(>|t|)"]
+    asd_ci_lower <- asd_slope - 1.96 * asd_se
+    asd_ci_upper <- asd_slope + 1.96 * asd_se
+    
+    td_slope <- coef(summary(td_model))["Age", "Estimate"]
+    td_se <- coef(summary(td_model))["Age", "Std. Error"]
+    td_pval <- coef(summary(td_model))["Age", "Pr(>|t|)"]
+    td_ci_lower <- td_slope - 1.96 * td_se
+    td_ci_upper <- td_slope + 1.96 * td_se
+    
+    # Calculate difference in slopes
+    slope_diff <- asd_slope - td_slope
+    
+    # Test the interaction using full model with Group*Age interaction
+    full_model <- lm(as.formula(paste(roi, "~ Group * Age + Sex")), data = sub_data)
+    interaction_pval <- coef(summary(full_model))["Grouptd:Age", "Pr(>|t|)"]
+    
+    # Store p-values for correction
+    all_pvalues[[cluster]] <- list(
+      asd = asd_pval,
+      td = td_pval,
+      interaction = interaction_pval
+    )
+    
+    # Calculate Cohen's d for the slope difference
+    # Use the pooled SD of the outcome variable (connectivity)
+    pooled_sd <- sd(sub_data[[roi]], na.rm = TRUE)
+    
+    # Cohen's d = slope difference × age_range / pooled_sd
+    age_range <- max(sub_data$Age, na.rm = TRUE) - min(sub_data$Age, na.rm = TRUE)
+    cohens_d <- (slope_diff * age_range) / pooled_sd
+    
+    # Calculate R-squared for each group to show variance explained
+    asd_rsq <- summary(asd_model)$r.squared
+    td_rsq <- summary(td_model)$r.squared
+    
+    # Create summary table
+    slope_summary <- data.frame(
+      Cluster = cluster,
+      Group = c("ASD", "TD", "Difference"),
+      N = c(nrow(asd_data), nrow(td_data), NA),
+      Age_Slope = c(asd_slope, td_slope, slope_diff),
+      Std_Error = c(asd_se, td_se, NA),
+      CI_Lower = c(asd_ci_lower, td_ci_lower, NA),
+      CI_Upper = c(asd_ci_upper, td_ci_upper, NA),
+      R_Squared = c(asd_rsq, td_rsq, NA),
+      Cohens_d = c(NA, NA, cohens_d)
+    )
+    
+    message("\n=== Age Slopes ===")
+    print(slope_summary)
+    
+    # Save slope summary
+    out_file <- paste0(output_dir, "cluster-", cluster, "_age_slopes.csv")
+    write_csv(slope_summary, out_file)
     message(paste("Saved:", out_file))
     
-    # Create plot
-    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_interaction_plot.png")
+    # Create plot with both groups
+    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_slopes_plot.png")
     
-    # Use raw data for plotting with group colors
+    # Prepare data for plotting
     plot_data <- data.frame(
       RSFC = sub_data[[roi]],
       Age = sub_data[["Age"]],
@@ -147,29 +201,44 @@ for (cluster in clusters) {
     )
     
     # Count subjects by group
-    n_asd_cluster <- sum(plot_data$Group == "asd")
-    n_td_cluster <- sum(plot_data$Group == "td")
+    n_asd_cluster <- nrow(asd_data)
+    n_td_cluster <- nrow(td_data)
     n_total_cluster <- nrow(plot_data)
+    
+    # Create subtitle with slope information and effect size
+    subtitle_text <- sprintf(
+      "N = %d (ASD: %d, TD: %d) | ASD slope: %.4f | TD slope: %.4f | Diff: %.4f | Cohen's d: %.3f",
+      n_total_cluster, n_asd_cluster, n_td_cluster, asd_slope, td_slope, slope_diff, cohens_d
+    )
     
     # Create scatter plot with regression lines by group
     p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group)) +
       geom_point(alpha = 0.6, size = 2) +
-      geom_smooth(method = "lm", se = TRUE) +
+      geom_smooth(method = "lm", se = TRUE, linewidth = 1.2) +
       scale_color_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
       scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
+      coord_cartesian(ylim = c(-0.25, 0.25)) +
       labs(
-        title = paste("Cluster", cluster, "- Age × Group Interaction"),
-        subtitle = sprintf("N = %d (ASD: %d, TD: %d)", n_total_cluster, n_asd_cluster, n_td_cluster),
+        title = paste("Cluster", cluster, "- Age-Connectivity Slopes by Group"),
+        subtitle = subtitle_text,
         x = "Age (years)",
         y = "Habenula Connectivity"
       ) +
       theme_minimal() +
       theme(
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30"),
+        legend.position = "top"
       )
     
-    ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
+    p <- p + theme(
+        panel.background = element_rect(fill = "white", color = "gray80"),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.grid.major = element_line(color = "gray90"),
+        panel.grid.minor = element_line(color = "gray95")
+      )
+    
+    ggsave(plot_file, p, width = 8, height = 6, dpi = 300)
     message(paste("Saved plot:", plot_file))
     
   }, error = function(e) {
@@ -177,192 +246,4 @@ for (cluster in clusters) {
   })
 }
 
-# ============================================================================
-# ASD-only analysis: Test age effects within ASD group
-# ============================================================================
-message("\n=== Running ASD-only analysis ===\n")
-
-for (cluster in clusters) {
-  data_path <- paste0(output_dir, "cluster-", cluster, "_age_data.csv")
-  
-  if (!file.exists(data_path)) {
-    message(paste("Skipping cluster", cluster, "- no data file"))
-    next
-  }
-  
-  data <- read_csv(data_path, show_col_types = FALSE)
-  
-  # Filter for ASD group only
-  asd_data <- data %>% filter(Group == "asd")
-  
-  message(paste("\n=== Processing Cluster", cluster, "(ASD only) ==="))
-  
-  # Prepare data for modeling
-  all_columns <- c(roi, categorical_vars, numerical_vars, "Site")
-  sub_data <- asd_data[, all_columns]
-  sub_data <- na.omit(sub_data)
-  
-  # Skip if insufficient data
-  if (nrow(sub_data) < 10) {
-    message(paste("Skipping cluster", cluster, "- insufficient data"))
-    next
-  }
-  
-  # Convert categorical variables to factors
-  for (var in categorical_vars) {
-    sub_data[[var]] <- factor(sub_data[[var]])
-  }
-  
-  # Ensure numeric columns are numeric
-  sub_data[[roi]] <- as.numeric(sub_data[[roi]])
-  for (var in numerical_vars) {
-    sub_data[[var]] <- as.numeric(sub_data[[var]])
-  }
-  
-  # Build equation without Group (ASD only)
-  equation_lmer <- paste(roi, "~ Age + Sex + (1|Site)")
-  
-  message(paste("Cluster", cluster, "(ASD only) model:", equation_lmer))
-  message(paste("Sample size:", nrow(sub_data)))
-  
-  # Run model
-  tryCatch({
-    model <- lmer(as.formula(equation_lmer), data = sub_data)
-    
-    print(summary(model))
-    
-    # Write results
-    out_file <- paste0(output_dir, "cluster-", cluster, "_age_ASDonly_table.csv")
-    model_table <- as.data.frame(coef(summary(model)))
-    write.csv(model_table, file = out_file, row.names = TRUE)
-    message(paste("Saved:", out_file))
-    
-    # Create plot
-    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_ASDonly_plot.png")
-    
-    plot_data <- data.frame(
-      RSFC = sub_data[[roi]],
-      Age = sub_data[["Age"]]
-    )
-    
-    n_asd <- nrow(plot_data)
-    
-    # Create scatter plot with regression line
-    p <- ggplot(plot_data, aes(x = Age, y = RSFC)) +
-      geom_point(alpha = 0.6, size = 2, color = "#E74C3C") +
-      geom_smooth(method = "lm", se = TRUE, color = "#E74C3C", fill = "#E74C3C") +
-      labs(
-        title = paste("Cluster", cluster, "- Age Effect (ASD only)"),
-        subtitle = sprintf("N = %d", n_asd),
-        x = "Age (years)",
-        y = "Habenula Connectivity"
-      ) +
-      theme_minimal() +
-      theme(
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
-      )
-    
-    ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
-    message(paste("Saved plot:", plot_file))
-    
-  }, error = function(e) {
-    message(paste("Error in cluster", cluster, "(ASD only):", e$message))
-  })
-}
-
-# ============================================================================
-# TD-only analysis: Test age effects within TD group
-# ============================================================================
-message("\n=== Running TD-only analysis ===\n")
-
-for (cluster in clusters) {
-  data_path <- paste0(output_dir, "cluster-", cluster, "_age_data.csv")
-  
-  if (!file.exists(data_path)) {
-    message(paste("Skipping cluster", cluster, "- no data file"))
-    next
-  }
-  
-  data <- read_csv(data_path, show_col_types = FALSE)
-  
-  # Filter for TD group only
-  td_data <- data %>% filter(Group == "td")
-  
-  message(paste("\n=== Processing Cluster", cluster, "(TD only) ==="))
-  
-  # Prepare data for modeling
-  all_columns <- c(roi, categorical_vars, numerical_vars, "Site")
-  sub_data <- td_data[, all_columns]
-  sub_data <- na.omit(sub_data)
-  
-  # Skip if insufficient data
-  if (nrow(sub_data) < 10) {
-    message(paste("Skipping cluster", cluster, "- insufficient data"))
-    next
-  }
-  
-  # Convert categorical variables to factors
-  for (var in categorical_vars) {
-    sub_data[[var]] <- factor(sub_data[[var]])
-  }
-  
-  # Ensure numeric columns are numeric
-  sub_data[[roi]] <- as.numeric(sub_data[[roi]])
-  for (var in numerical_vars) {
-    sub_data[[var]] <- as.numeric(sub_data[[var]])
-  }
-  
-  # Build equation without Group (TD only)
-  equation_lmer <- paste(roi, "~ Age + Sex + (1|Site)")
-  
-  message(paste("Cluster", cluster, "(TD only) model:", equation_lmer))
-  message(paste("Sample size:", nrow(sub_data)))
-  
-  # Run model
-  tryCatch({
-    model <- lmer(as.formula(equation_lmer), data = sub_data)
-    
-    print(summary(model))
-    
-    # Write results
-    out_file <- paste0(output_dir, "cluster-", cluster, "_age_TDonly_table.csv")
-    model_table <- as.data.frame(coef(summary(model)))
-    write.csv(model_table, file = out_file, row.names = TRUE)
-    message(paste("Saved:", out_file))
-    
-    # Create plot
-    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_TDonly_plot.png")
-    
-    plot_data <- data.frame(
-      RSFC = sub_data[[roi]],
-      Age = sub_data[["Age"]]
-    )
-    
-    n_td <- nrow(plot_data)
-    
-    # Create scatter plot with regression line
-    p <- ggplot(plot_data, aes(x = Age, y = RSFC)) +
-      geom_point(alpha = 0.6, size = 2, color = "#3498DB") +
-      geom_smooth(method = "lm", se = TRUE, color = "#3498DB", fill = "#3498DB") +
-      labs(
-        title = paste("Cluster", cluster, "- Age Effect (TD only)"),
-        subtitle = sprintf("N = %d", n_td),
-        x = "Age (years)",
-        y = "Habenula Connectivity"
-      ) +
-      theme_minimal() +
-      theme(
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
-      )
-    
-    ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
-    message(paste("Saved plot:", plot_file))
-    
-  }, error = function(e) {
-    message(paste("Error in cluster", cluster, "(TD only):", e$message))
-  })
-}
-
-message("\nAnalysis complete!")
+message("\nSlope extraction complete! All clusters analyzed with ASD and TD slopes on same graphs.")

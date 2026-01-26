@@ -137,6 +137,10 @@ categorical_vars <- c("Sex")
 numerical_vars <- c("Age")
 phen_vars <- c("Phen1", "Phen2", "Phen3", "Phen4")
 
+# Store p-values for multiple comparison correction
+interaction_results <- data.frame()
+asd_only_results <- data.frame()
+
 for (cluster in clusters) {
   data_path <- paste0(output_dir, "cluster-", cluster, "_data.csv")
   data <- read_csv(data_path, show_col_types = FALSE)
@@ -151,6 +155,15 @@ for (cluster in clusters) {
     all_columns <- c(roi, categorical_vars, numerical_vars, phen_var, group_var, "Site")
     sub_data <- data[, all_columns]
     sub_data <- na.omit(sub_data)
+
+      # Ensure Site is a factor and remove NAs
+      sub_data$Site <- as.factor(sub_data$Site)
+      sub_data <- sub_data[!is.na(sub_data$Site), ]
+      # Skip if not enough Site levels for random effect
+      if (length(unique(sub_data$Site)) < 2) {
+        message(paste("Skipping", phen_var, "in cluster", cluster, "- not enough Site levels for random effect"))
+        next
+      }
     
     # Skip if insufficient data
     if (nrow(sub_data) < 10) {
@@ -183,51 +196,68 @@ for (cluster in clusters) {
     # Run model with lmer (Site as random effect)
     tryCatch({
       model <- lmer(as.formula(equation_lmer), data = sub_data)
-      
       print(summary(model))
-      
-      # Write results
-      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_table.csv")
       model_table <- as.data.frame(coef(summary(model)))
+      interaction_term <- paste0(group_var, "td:", phen_var)
+      interaction_pval <- NA
+      if (interaction_term %in% rownames(model_table)) {
+        interaction_pval <- model_table[interaction_term, "Pr(>|t|)"]
+        interaction_results <- rbind(interaction_results, data.frame(
+          Cluster = cluster,
+          Phenotype = phen_var,
+          N = nrow(sub_data),
+          Estimate = model_table[interaction_term, "Estimate"],
+          Std_Error = model_table[interaction_term, "Std. Error"],
+          t_value = model_table[interaction_term, "t value"],
+          p_value = interaction_pval,
+          stringsAsFactors = FALSE
+        ))
+      }
+      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_table.csv")
       write.csv(model_table, file = out_file, row.names = TRUE)
       message(paste("Saved:", out_file))
-      
-      # Create plot
-      plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_plot.png")
-      
-      # Use raw data for plotting with group colors
-      plot_data <- data.frame(
-        RSFC = sub_data[[roi]],
-        Phenotype = sub_data[[phen_var]],
-        Group = sub_data[[group_var]]
-      )
-      
-      # Count subjects by group
-      n_asd <- sum(plot_data$Group == "asd")
-      n_td <- sum(plot_data$Group == "td")
-      n_total <- nrow(plot_data)
-      
-      # Create scatter plot with regression lines by group
-      p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC, color = Group, fill = Group)) +
-        geom_point(alpha = 0.6, size = 2) +
-        geom_smooth(method = "lm", se = TRUE) +
-        scale_color_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
-        scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
-        labs(
-          title = paste("Cluster", cluster, "-", phen_var),
-          subtitle = sprintf("N = %d (ASD: %d, TD: %d)", n_total, n_asd, n_td),
-          x = phen_var,
-          y = "Habenula Connectivity"
-        ) +
-        theme_minimal() +
-        theme(
-          plot.title = element_text(hjust = 0.5),
-          plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+      # Only plot if p < 0.05
+      if (!is.na(interaction_pval) && interaction_pval < 0.05) {
+        plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_plot.png")
+        plot_data <- data.frame(
+          RSFC = sub_data[[roi]],
+          Phenotype = sub_data[[phen_var]],
+          Group = sub_data[[group_var]]
         )
-      
-      ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
-      message(paste("Saved plot:", plot_file))
-      
+        n_asd <- sum(plot_data$Group == "asd")
+        n_td <- sum(plot_data$Group == "td")
+        n_total <- nrow(plot_data)
+        # Calculate slopes for each group
+        slope_asd <- NA
+        slope_td <- NA
+        if (sum(plot_data$Group == "asd") > 1) {
+          slope_asd <- coef(lm(RSFC ~ Phenotype, data = plot_data[plot_data$Group == "asd", ]))[2]
+        }
+        if (sum(plot_data$Group == "td") > 1) {
+          slope_td <- coef(lm(RSFC ~ Phenotype, data = plot_data[plot_data$Group == "td", ]))[2]
+        }
+        slope_label <- sprintf("Slope ASD: %.3f\nSlope TD: %.3f", slope_asd, slope_td)
+        p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC, color = Group, fill = Group)) +
+          geom_point(alpha = 0.6, size = 2) +
+          geom_smooth(method = "lm", se = TRUE) +
+          scale_color_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
+          scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
+          labs(
+            title = paste("Cluster", cluster, "-", phen_var),
+            subtitle = sprintf("N = %d (ASD: %d, TD: %d)\n%s", n_total, n_asd, n_td, slope_label),
+            x = phen_var,
+            y = "Habenula Connectivity"
+          ) +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5),
+            plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+          )
+        ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
+        message(paste("Saved plot:", plot_file))
+      } else {
+        message("Plot not saved: interaction p >= 0.05 or not found.")
+      }
     }, error = function(e) {
       message(paste("Error in cluster", cluster, phen_var, ":", e$message))
     })
@@ -256,6 +286,15 @@ for (cluster in clusters) {
     all_columns <- c(roi, categorical_vars, numerical_vars, phen_var, "Site")
     sub_data <- asd_data[, all_columns]
     sub_data <- na.omit(sub_data)
+
+      # Ensure Site is a factor and remove NAs
+      sub_data$Site <- as.factor(sub_data$Site)
+      sub_data <- sub_data[!is.na(sub_data$Site), ]
+      # Skip if not enough Site levels for random effect
+      if (length(unique(sub_data$Site)) < 2) {
+        message(paste("Skipping", phen_var, "in cluster", cluster, "(ASD only) - not enough Site levels for random effect"))
+        next
+      }
     
     # Skip if insufficient data
     if (nrow(sub_data) < 10) {
@@ -284,49 +323,102 @@ for (cluster in clusters) {
     # Run model
     tryCatch({
       model <- lmer(as.formula(equation_lmer), data = sub_data)
-      
       print(summary(model))
-      
-      # Write results
-      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_table.csv")
       model_table <- as.data.frame(coef(summary(model)))
+      phen_pval <- NA
+      if (phen_var %in% rownames(model_table)) {
+        phen_pval <- model_table[phen_var, "Pr(>|t|)"]
+        asd_only_results <- rbind(asd_only_results, data.frame(
+          Cluster = cluster,
+          Phenotype = phen_var,
+          N = nrow(sub_data),
+          Estimate = model_table[phen_var, "Estimate"],
+          Std_Error = model_table[phen_var, "Std. Error"],
+          t_value = model_table[phen_var, "t value"],
+          p_value = phen_pval,
+          stringsAsFactors = FALSE
+        ))
+      }
+      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_table.csv")
       write.csv(model_table, file = out_file, row.names = TRUE)
       message(paste("Saved:", out_file))
-      
-      # Create plot
-      plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_plot.png")
-      
-      plot_data <- data.frame(
-        RSFC = sub_data[[roi]],
-        Phenotype = sub_data[[phen_var]]
-      )
-      
-      n_asd <- nrow(plot_data)
-      
-      # Create scatter plot with regression line
-      p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC)) +
-        geom_point(alpha = 0.6, size = 2, color = "#E74C3C") +
-        geom_smooth(method = "lm", se = TRUE, color = "#E74C3C", fill = "#E74C3C") +
-        labs(
-          title = paste("Cluster", cluster, "-", phen_var, "(ASD only)"),
-          subtitle = sprintf("N = %d", n_asd),
-          x = phen_var,
-          y = "Habenula Connectivity"
-        ) +
-        theme_minimal() +
-        theme(
-          plot.title = element_text(hjust = 0.5),
-          plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+      # Only plot if p < 0.05
+      if (!is.na(phen_pval) && phen_pval < 0.05) {
+        plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_ASDonly_plot.png")
+        plot_data <- data.frame(
+          RSFC = sub_data[[roi]],
+          Phenotype = sub_data[[phen_var]]
         )
-      
-      ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
-      message(paste("Saved plot:", plot_file))
-      
+        n_asd <- nrow(plot_data)
+        # Calculate slope for ASD group
+        slope_asd <- NA
+        if (n_asd > 1) {
+          slope_asd <- coef(lm(RSFC ~ Phenotype, data = plot_data))[2]
+        }
+        slope_label <- sprintf("Slope ASD: %.3f", slope_asd)
+        p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC)) +
+          geom_point(alpha = 0.6, size = 2, color = "#E74C3C") +
+          geom_smooth(method = "lm", se = TRUE, color = "#E74C3C", fill = "#E74C3C") +
+          labs(
+            title = paste("Cluster", cluster, "-", phen_var, "(ASD only)"),
+            subtitle = sprintf("N = %d\n%s", n_asd, slope_label),
+            x = phen_var,
+            y = "Habenula Connectivity"
+          ) +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5),
+            plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+          )
+        ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
+        message(paste("Saved plot:", plot_file))
+      } else {
+        message("Plot not saved: ASD-only p >= 0.05 or not found.")
+      }
     }, error = function(e) {
       message(paste("Error in cluster", cluster, phen_var, "(ASD only):", e$message))
     })
   }
 }
 
-message("\nAnalysis complete!")
+# ============================================================================
+# Multiple comparison correction using FDR
+# ============================================================================
+message("\n=== Applying FDR correction for multiple comparisons ===")
+
+# Correct interaction p-values
+if (nrow(interaction_results) > 0) {
+  interaction_results$p_fdr <- p.adjust(interaction_results$p_value, method = "fdr")
+  interaction_results$significant_fdr <- interaction_results$p_fdr < 0.05
+  
+  # Save corrected results
+  interaction_file <- paste0(output_dir, "interaction_results_fdr_corrected.csv")
+  write_csv(interaction_results, interaction_file)
+  message(paste("\nSaved FDR-corrected interaction results to:", interaction_file))
+  
+  message("\n=== Group*Phenotype Interaction Results (FDR-corrected) ===")
+  print(interaction_results %>% arrange(p_fdr))
+  
+  n_sig <- sum(interaction_results$significant_fdr)
+  message(sprintf("\nSignificant interactions after FDR correction: %d/%d", n_sig, nrow(interaction_results)))
+}
+
+# Correct ASD-only p-values
+if (nrow(asd_only_results) > 0) {
+  asd_only_results$p_fdr <- p.adjust(asd_only_results$p_value, method = "fdr")
+  asd_only_results$significant_fdr <- asd_only_results$p_fdr < 0.05
+  
+  # Save corrected results
+  asd_only_file <- paste0(output_dir, "asd_only_results_fdr_corrected.csv")
+  write_csv(asd_only_results, asd_only_file)
+  message(paste("\nSaved FDR-corrected ASD-only results to:", asd_only_file))
+  
+  message("\n=== ASD-only Phenotype Effects (FDR-corrected) ===")
+  print(asd_only_results %>% arrange(p_fdr))
+  
+  n_sig <- sum(asd_only_results$significant_fdr)
+  message(sprintf("\nSignificant phenotype effects after FDR correction: %d/%d", n_sig, nrow(asd_only_results)))
+}
+
+message("\nAnalysis complete with FDR correction!")
 
