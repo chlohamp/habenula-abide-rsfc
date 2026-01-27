@@ -205,18 +205,19 @@ for (cluster in clusters) {
     n_td_cluster <- nrow(td_data)
     n_total_cluster <- nrow(plot_data)
     
-    # Create subtitle with slope information and effect size
+    # Create subtitle with slope information and effect size, using line breaks and similar style to phenotypic regression
     subtitle_text <- sprintf(
-      "N = %d (ASD: %d, TD: %d) | ASD slope: %.4f | TD slope: %.4f | Diff: %.4f | Cohen's d: %.3f",
+      "N = %d (ASD: %d, TD: %d)\nSlope ASD: %.3f\nSlope TD: %.3f\nDiff: %.3f | Cohen's d: %.3f",
       n_total_cluster, n_asd_cluster, n_td_cluster, asd_slope, td_slope, slope_diff, cohens_d
     )
-    
-    # Create scatter plot with regression lines by group
-    p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group)) +
-      geom_point(alpha = 0.6, size = 2) +
-      geom_smooth(method = "lm", se = TRUE, linewidth = 1.2) +
-      scale_color_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
-      scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
+    # Create scatter plot with regression lines by group, matching style to phenotypic regression
+    p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group, linetype = Group, shape = Group)) +
+      geom_point(alpha = 0.6, size = 1.8) +
+      geom_smooth(method = "lm", se = TRUE) +
+      scale_color_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
+      scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
+      scale_linetype_manual(values = c("asd" = "solid", "td" = "dashed")) +
+      scale_shape_manual(values = c("asd" = 16, "td" = 4)) +
       coord_cartesian(ylim = c(-0.25, 0.25)) +
       labs(
         title = paste("Cluster", cluster, "- Age-Connectivity Slopes by Group"),
@@ -226,19 +227,12 @@ for (cluster in clusters) {
       ) +
       theme_minimal() +
       theme(
-        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30"),
-        legend.position = "top"
+        legend.key.width = unit(1, "cm"),
+        panel.grid.minor = element_blank()
       )
-    
-    p <- p + theme(
-        panel.background = element_rect(fill = "white", color = "gray80"),
-        plot.background = element_rect(fill = "white", color = NA),
-        panel.grid.major = element_line(color = "gray90"),
-        panel.grid.minor = element_line(color = "gray95")
-      )
-    
-    ggsave(plot_file, p, width = 8, height = 6, dpi = 300)
+    ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
     message(paste("Saved plot:", plot_file))
     
   }, error = function(e) {

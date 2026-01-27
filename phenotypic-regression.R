@@ -237,11 +237,14 @@ for (cluster in clusters) {
           slope_td <- coef(lm(RSFC ~ Phenotype, data = plot_data[plot_data$Group == "td", ]))[2]
         }
         slope_label <- sprintf("Slope ASD: %.3f\nSlope TD: %.3f", slope_asd, slope_td)
-        p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC, color = Group, fill = Group)) +
-          geom_point(alpha = 0.6, size = 2) +
+        p <- ggplot(plot_data, aes(x = Phenotype, y = RSFC, color = Group, fill = Group, linetype = Group, shape = Group)) +
+          geom_point(alpha = 0.6, size = 1.8) +
           geom_smooth(method = "lm", se = TRUE) +
-          scale_color_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
-          scale_fill_manual(values = c("asd" = "#E74C3C", "td" = "#3498DB")) +
+          scale_color_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
+          scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
+          scale_linetype_manual(values = c("asd" = "solid", "td" = "dashed")) +
+          scale_shape_manual(values = c("asd" = 16, "td" = 4)) +
+          coord_cartesian(ylim = c(-0.3, 0.3)) +
           labs(
             title = paste("Cluster", cluster, "-", phen_var),
             subtitle = sprintf("N = %d (ASD: %d, TD: %d)\n%s", n_total, n_asd, n_td, slope_label),
@@ -251,7 +254,9 @@ for (cluster in clusters) {
           theme_minimal() +
           theme(
             plot.title = element_text(hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30")
+            plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30"),
+            legend.key.width = unit(2.5, "cm"),
+            panel.grid.minor = element_blank()
           )
         ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
         message(paste("Saved plot:", plot_file))
