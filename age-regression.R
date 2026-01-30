@@ -214,8 +214,8 @@ for (cluster in clusters) {
     p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group, linetype = Group, shape = Group)) +
       geom_point(alpha = 0.6, size = 1.8) +
       geom_smooth(method = "lm", se = TRUE) +
-      scale_color_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
-      scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#ed774d")) +
+      scale_color_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
+      scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
       scale_linetype_manual(values = c("asd" = "solid", "td" = "dashed")) +
       scale_shape_manual(values = c("asd" = 16, "td" = 4)) +
       coord_cartesian(ylim = c(-0.25, 0.25)) +
@@ -232,7 +232,7 @@ for (cluster in clusters) {
         legend.key.width = unit(1, "cm"),
         panel.grid.minor = element_blank()
       )
-    ggsave(plot_file, p, width = 7, height = 5, dpi = 300)
+    ggsave(plot_file, p, width = 6, height = 5, dpi = 300)
     message(paste("Saved plot:", plot_file))
     
   }, error = function(e) {
