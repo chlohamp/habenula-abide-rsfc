@@ -256,8 +256,18 @@ def main(
 
                 # Extract values from subject data where mask == 1
                 masked_values = subject_data[binarized_mask == 1]
-                zscore = np.mean(masked_values)
-                print(f"\t\t\tCluster {cluster_id} mean z-score (binarized mask): {zscore:.4f}", flush=True)
+                
+                # Take top 50% highest magnitude voxels and average them
+                # Note: We use absolute values only to FIND the strongest voxels,
+                # but preserve original signs (positive/negative) in the final average
+                abs_values = np.abs(masked_values)  # Get absolute values for magnitude ranking
+                n_top_voxels = max(1, int(len(masked_values) * 0.5))  # Top 50%, at least 1 voxel
+                top_indices = np.argpartition(abs_values, -n_top_voxels)[-n_top_voxels:]  # Get indices of top 50%
+                top_values = masked_values[top_indices]  # Get original signed values for top magnitude voxels
+                zscore = np.mean(top_values)  # Average preserves sign - negative if top voxels are negative
+                
+                print(f"\t\t\tCluster {cluster_id} total voxels: {len(masked_values)}, top 50% voxels: {n_top_voxels}", flush=True)
+                print(f"\t\t\tCluster {cluster_id} mean z-score (top 50% highest magnitude): {zscore:.4f}", flush=True)
 
                 age = participants_df.loc[participants_df['Subj'] == subject, 'age'].values[0]
                 group = participants_df.loc[participants_df['Subj'] == subject, 'group'].values[0]
