@@ -13,7 +13,7 @@ output_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # Load cluster data files
-clusters <- c("1", "2", "3", "4")
+clusters <- c("1", "2")
 cluster_data_list <- list()
 
 for (cluster in clusters) {
