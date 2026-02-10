@@ -4,6 +4,12 @@ library("dplyr")
 library("tidyr")
 library("ggplot2")
 
+# Fix font/graphics issues on macOS
+options(bitmapType = 'cairo')
+if (capabilities("cairo")) {
+  options(device = function(...) cairo_pdf(...))
+}
+
 # Set paths
 data_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/age-effect5-21/age-differences/"
 output_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/age-effect5-21/age-differences/"
@@ -18,7 +24,7 @@ participants_df <- read_tsv(participants_file, show_col_types = FALSE) %>%
   rename(Subject = participant_id, Sex = SEX, Site = SITE_ID)
 
 # Load cluster data files
-clusters <- c("1", "2", "3")
+clusters <- c("1")
 cluster_data_list <- list()
 
 for (cluster in clusters) {
@@ -84,7 +90,7 @@ numerical_vars <- c("Age")
 all_pvalues <- list()
 
 for (cluster in clusters) {
-  data_path <- paste0(output_dir, "cluster-", cluster, "_age_data.csv")
+  data_path <- paste0(output_dir, "cluster-", cluster, "_age_data_weighted.csv")
   
   if (!file.exists(data_path)) {
     message(paste("Skipping cluster", cluster, "- no data file"))
@@ -186,12 +192,12 @@ for (cluster in clusters) {
     print(slope_summary)
     
     # Save slope summary
-    out_file <- paste0(output_dir, "cluster-", cluster, "_age_slopes.csv")
+    out_file <- paste0(output_dir, "cluster-", cluster, "_age_weighted_slopes.csv")
     write_csv(slope_summary, out_file)
     message(paste("Saved:", out_file))
     
     # Create plot with both groups
-    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_slopes_plot.png")
+    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_weighted_slopes_plot.png")
     
     # Prepare data for plotting
     plot_data <- data.frame(
@@ -211,29 +217,67 @@ for (cluster in clusters) {
       n_total_cluster, n_asd_cluster, n_td_cluster, asd_slope, td_slope, slope_diff, cohens_d
     )
     # Create scatter plot with regression lines by group, matching style to phenotypic regression
-    p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group, linetype = Group, shape = Group)) +
-      geom_point(alpha = 0.6, size = 1.8) +
-      geom_smooth(method = "lm", se = TRUE) +
-      scale_color_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
-      scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
-      scale_linetype_manual(values = c("asd" = "solid", "td" = "dashed")) +
-      scale_shape_manual(values = c("asd" = 16, "td" = 4)) +
-      coord_cartesian(ylim = c(-0.25, 0.25)) +
-      labs(
-        title = paste("Cluster", cluster, "- Age-Connectivity Slopes by Group"),
-        subtitle = subtitle_text,
-        x = "Age (years)",
-        y = "Habenula Connectivity"
-      ) +
-      theme_minimal() +
-      theme(
-        plot.title = element_text(hjust = 0.5),
-        plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30"),
-        legend.key.width = unit(1, "cm"),
-        panel.grid.minor = element_blank()
-      )
-    ggsave(plot_file, p, width = 6, height = 5, dpi = 300)
-    message(paste("Saved plot:", plot_file))
+    # Use tryCatch to handle font/graphics issues
+    plot_success <- tryCatch({
+      p <- ggplot(plot_data, aes(x = Age, y = RSFC, color = Group, fill = Group, linetype = Group, shape = Group)) +
+        geom_point(alpha = 0.6, size = 1.8) +
+        geom_smooth(method = "lm", se = TRUE, formula = y ~ x) +
+        scale_color_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
+        scale_fill_manual(values = c("asd" = "#b6d191", "td" = "#87B2EA")) +
+        scale_linetype_manual(values = c("asd" = "solid", "td" = "dashed")) +
+        scale_shape_manual(values = c("asd" = 16, "td" = 4)) +
+        coord_cartesian(ylim = c(-0.25, 0.25)) +
+        labs(
+          title = paste("Cluster", cluster, "- Age-Connectivity Slopes by Group"),
+          subtitle = subtitle_text,
+          x = "Age (years)",
+          y = "Habenula Connectivity"
+        ) +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, family = ""),
+          plot.subtitle = element_text(hjust = 0.5, size = 9, color = "gray30", family = ""),
+          legend.key.width = unit(1, "cm"),
+          panel.grid.minor = element_blank(),
+          text = element_text(family = "")
+        )
+      
+      # Try saving with different devices if one fails
+      saved <- FALSE
+      
+      # Try PNG with Cairo first
+      if (!saved) {
+        tryCatch({
+          png(plot_file, width = 6*300, height = 5*300, res = 300, type = "cairo")
+          print(p)
+          dev.off()
+          saved <- TRUE
+          message(paste("Saved plot (Cairo PNG):", plot_file))
+        }, error = function(e) {
+          if (dev.cur() != 1) dev.off()  # Clean up if device is still open
+        })
+      }
+      
+      # Fallback to regular ggsave
+      if (!saved) {
+        tryCatch({
+          ggsave(plot_file, p, width = 6, height = 5, dpi = 300, device = "png")
+          saved <- TRUE
+          message(paste("Saved plot (ggsave):", plot_file))
+        }, error = function(e) {
+          message(paste("ggsave failed:", e$message))
+        })
+      }
+      
+      if (!saved) {
+        message(paste("Warning: Could not save plot for cluster", cluster))
+      }
+      
+      TRUE
+    }, error = function(e) {
+      message(paste("Plot creation failed for cluster", cluster, ":", e$message))
+      FALSE
+    })
     
   }, error = function(e) {
     message(paste("Error in cluster", cluster, ":", e$message))
