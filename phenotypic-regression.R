@@ -9,7 +9,7 @@ data_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/ph
 participants_file <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/participants.tsv"
 output_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/pheno/"
 
-# Create output directory if it doesn't exist
+# Create output directory if it doesn't existx
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # Load cluster data files
@@ -213,12 +213,12 @@ for (cluster in clusters) {
           stringsAsFactors = FALSE
         ))
       }
-      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_table.csv")
+      out_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_table-test.csv")
       write.csv(model_table, file = out_file, row.names = TRUE)
       message(paste("Saved:", out_file))
       # Only plot if p < 0.05
       if (!is.na(interaction_pval) && interaction_pval < 0.05) {
-        plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_plot.png")
+        plot_file <- paste0(output_dir, "cluster-", cluster, "_", phen_var, "_plot-test.png")
         plot_data <- data.frame(
           RSFC = sub_data[[roi]],
           Phenotype = sub_data[[phen_var]],

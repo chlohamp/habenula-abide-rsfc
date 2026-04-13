@@ -23,17 +23,17 @@ df <- df0 %>%
     ),
     Sex = as.factor(Sex),
     Group = case_when(
-      DX_GROUP %in% c(1, "1") ~ "asd",
-      DX_GROUP %in% c(2, "2") ~ "td",
+      DX_GROUP %in% c(1, "1") ~ "ASD",
+      DX_GROUP %in% c(2, "2") ~ "NT",
       TRUE ~ NA_character_
     ),
-    Group = factor(Group, levels = c("asd", "td")),
+    Group = factor(Group, levels = c("ASD", "NT")),
     Age = as.numeric(AGE_AT_SCAN)
   ) %>%
   filter(!is.na(Site), !is.na(Sex), !is.na(Group), !is.na(Age))
 
 cat("Sample:", nrow(df), "participants across", nlevels(df$Site), "sites\n")
-cat("ASD:", sum(df$Group == "asd"), "| TD:", sum(df$Group == "td"), "\n\n")
+cat("ASD:", sum(df$Group == "ASD"), "| NT:", sum(df$Group == "NT"), "\n\n")
 
 # ==============================================
 # SITE SIMILARITY/VARIABILITY ANALYSIS
@@ -44,9 +44,9 @@ site_summary <- df %>%
   group_by(Site) %>%
   summarise(
     total_n = n(),
-    asd_n = sum(Group == "asd"),
-    td_n = sum(Group == "td"),
-    asd_prop = mean(Group == "asd"),
+    asd_n = sum(Group == "ASD"),
+    td_n = sum(Group == "NT"),
+    asd_prop = mean(Group == "ASD"),
     male_n = sum(Sex == "M"),
     female_n = sum(Sex == "F"),
     male_prop = mean(Sex == "M"),
@@ -167,7 +167,7 @@ cat("\n")
 # ==============================================
 
 # Define colors
-group_colors <- c("asd" = "#b6d191", "td" = "#87B2EA")
+group_colors <- c("ASD" = "#b6d191", "NT" = "#87B2EA")
 sex_colors <- c("M" = "#66B2FF", "F" = "#FF9999")
 
 # Plot 1: Age distribution across sites
@@ -175,10 +175,18 @@ p1 <- ggplot(df, aes(x = Site, y = Age, fill = Group)) +
   geom_boxplot(alpha = 0.7) +
   scale_fill_manual(values = group_colors) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 14),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    plot.title = element_text(size = 18, hjust = 0.5),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12)
+  ) +
   labs(
     title = "Age Distribution Across Sites",
-    subtitle = paste("Age range:", round(min(site_summary$mean_age), 1), "to", round(max(site_summary$mean_age), 1), "years"),
+    #subtitle = paste("Age range:", round(min(site_summary$mean_age), 1), "to", round(max(site_summary$mean_age), 1), "years"),
     x = "Site",
     y = "Age (years)",
     fill = "Group"
@@ -194,10 +202,18 @@ p2 <- ggplot(site_group_counts, aes(x = Site, y = n, fill = Group)) +
   geom_bar(stat = "identity", alpha = 0.7) +
   scale_fill_manual(values = group_colors) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 14),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    plot.title = element_text(size = 18, hjust = 0.5),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12)
+  ) +
   labs(
     title = "Group Distribution Across Sites",
-    subtitle = paste("ASD proportion range:", round(min(site_summary$asd_prop), 2), "to", round(max(site_summary$asd_prop), 2)),
+    #subtitle = paste("ASD proportion range:", round(min(site_summary$asd_prop), 2), "to", round(max(site_summary$asd_prop), 2)),
     x = "Site", 
     y = "Number of Participants",
     fill = "Group"
@@ -213,10 +229,18 @@ p3 <- ggplot(site_sex_counts, aes(x = Site, y = n, fill = Sex)) +
   geom_bar(stat = "identity", alpha = 0.7) +
   scale_fill_manual(values = sex_colors) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 14),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    plot.title = element_text(size = 18, hjust = 0.5),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12)
+  ) +
   labs(
     title = "Sex Distribution Across Sites",
-    subtitle = paste("Male proportion range:", round(min(site_summary$male_prop), 2), "to", round(max(site_summary$male_prop), 2)),
+    #subtitle = paste("Male proportion range:", round(min(site_summary$male_prop), 2), "to", round(max(site_summary$male_prop), 2)),
     x = "Site", 
     y = "Number of Participants",
     fill = "Sex"

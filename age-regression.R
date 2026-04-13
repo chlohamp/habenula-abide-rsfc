@@ -13,15 +13,9 @@ if (capabilities("cairo")) {
 # Set paths
 data_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/age-effect5-21/age-differences/"
 output_dir <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/group-drawn/age-effect5-21/age-differences/"
-participants_file <- "/Users/chloehampson/Desktop/habenula-abide-rsfc/dset/participants.tsv"
 
 # Create output directory if it doesn't exist
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-
-# Load participants data for Sex and Site
-participants_df <- read_tsv(participants_file, show_col_types = FALSE) %>%
-  select(participant_id, SEX, SITE_ID) %>%
-  rename(Subject = participant_id, Sex = SEX, Site = SITE_ID)
 
 # Load cluster data files
 clusters <- c("1")
@@ -33,8 +27,6 @@ for (cluster in clusters) {
     cluster_df <- read_csv(csv_file, show_col_types = FALSE)
     # Rename Mean_Zscore to Correlation
     cluster_df <- cluster_df %>% rename(Correlation = Mean_Zscore)
-    # Merge with participants data to get Sex and Site
-    cluster_df <- cluster_df %>% left_join(participants_df, by = "Subject")
     cluster_data_list[[cluster]] <- cluster_df
     message(paste("Loaded:", csv_file))
   } else {
@@ -90,14 +82,12 @@ numerical_vars <- c("Age")
 all_pvalues <- list()
 
 for (cluster in clusters) {
-  data_path <- paste0(output_dir, "cluster-", cluster, "_age_data_weighted.csv")
-  
-  if (!file.exists(data_path)) {
-    message(paste("Skipping cluster", cluster, "- no data file"))
+  if (is.null(cluster_data_list[[cluster]])) {
+    message(paste("Skipping cluster", cluster, "- no data available"))
     next
   }
   
-  data <- read_csv(data_path, show_col_types = FALSE)
+  data <- cluster_data_list[[cluster]]
   
   message(paste("\n=== Processing Cluster", cluster, "==="))
   
@@ -149,6 +139,10 @@ for (cluster in clusters) {
     td_ci_lower <- td_slope - 1.96 * td_se
     td_ci_upper <- td_slope + 1.96 * td_se
     
+    # Print slopes explicitly
+    message(sprintf("ASD Slope: %.4f (SE: %.4f, p: %.4f)", asd_slope, asd_se, asd_pval))
+    message(sprintf("TD Slope: %.4f (SE: %.4f, p: %.4f)", td_slope, td_se, td_pval))
+    
     # Calculate difference in slopes
     slope_diff <- asd_slope - td_slope
     
@@ -192,12 +186,12 @@ for (cluster in clusters) {
     print(slope_summary)
     
     # Save slope summary
-    out_file <- paste0(output_dir, "cluster-", cluster, "_age_weighted_slopes.csv")
+    out_file <- paste0(output_dir, "cluster-", cluster, "_age_test_slopes.csv")
     write_csv(slope_summary, out_file)
     message(paste("Saved:", out_file))
     
     # Create plot with both groups
-    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_weighted_slopes_plot.png")
+    plot_file <- paste0(output_dir, "cluster-", cluster, "_age_test_slopes_plot.png")
     
     # Prepare data for plotting
     plot_data <- data.frame(
